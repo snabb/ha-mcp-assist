@@ -911,6 +911,25 @@ async def test_handle_tools_list_filters_disabled_tool_families(
 
 
 @pytest.mark.asyncio
+async def test_discover_entities_schema_discourages_inferred_domain_filters(
+    hass, profile_entry_factory, system_entry_factory
+) -> None:
+    """Name searches should not be narrowed to a guessed entity domain."""
+    system_entry_factory()
+    server = MCPServer(hass, 8099, profile_entry_factory())
+
+    result = await server.handle_tools_list()
+    discover_tool = next(
+        tool for tool in result["tools"] if tool["name"] == "discover_entities"
+    )
+    properties = discover_tool["inputSchema"]["properties"]
+
+    assert "strict" in properties["domain"]["description"]
+    assert "do not infer" in properties["domain"]["description"]
+    assert "without a domain filter" in properties["name_contains"]["description"]
+
+
+@pytest.mark.asyncio
 async def test_handle_tools_list_includes_music_assistant_package_tools(
     hass, profile_entry_factory, system_entry_factory
 ) -> None:
@@ -1502,6 +1521,30 @@ async def test_tool_discover_entities_reports_paging_metadata(
     )
     assert result["pagination"]["next_offset"] == 2
     assert len(result["entities"]) == 2
+
+
+def test_empty_entity_discovery_suggests_broader_name_retry(
+    hass, profile_entry_factory, system_entry_factory
+) -> None:
+    """Only constrained name searches should recommend a broader retry."""
+    system_entry_factory()
+    server = MCPServer(hass, 8099, profile_entry_factory())
+    constrained_result = server._format_discovery_results(
+        [],
+        {"domain": "sensor", "name_contains": "delivery"},
+    )
+    unconstrained_result = server._format_discovery_results(
+        [],
+        {"name_contains": "delivery"},
+    )
+
+    assert "domain filter is strict" in constrained_result["content"][0]["text"]
+    assert "retry the same name search without that filter" in (
+        constrained_result["content"][0]["text"]
+    )
+    assert unconstrained_result["content"][0]["text"] == (
+        "No entities found matching the search criteria."
+    )
 
 
 @pytest.mark.asyncio
