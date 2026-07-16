@@ -311,6 +311,36 @@ async def test_area_discovery_honors_entity_type_for_area_and_floor(hass) -> Non
 
 
 @pytest.mark.asyncio
+async def test_name_discovery_can_find_entities_across_domains(hass) -> None:
+    """A name-only retry should find entities outside an inferred domain."""
+    hass.states.async_set(
+        "input_boolean.delivery_pending",
+        "on",
+        {"friendly_name": "Delivery Pending"},
+    )
+    discovery = SmartDiscovery(hass)
+
+    with patch(
+        "custom_components.mcp_assist.discovery.async_should_expose",
+        return_value=True,
+    ):
+        constrained_page = await discovery.discover_entities_page(
+            domain="sensor",
+            name_contains="delivery",
+            limit=10,
+        )
+        name_only_page = await discovery.discover_entities_page(
+            name_contains="delivery",
+            limit=10,
+        )
+
+    assert constrained_page["items"] == []
+    assert [item["entity_id"] for item in name_only_page["items"]] == [
+        "input_boolean.delivery_pending"
+    ]
+
+
+@pytest.mark.asyncio
 async def test_get_entity_details_includes_script_fields(hass) -> None:
     """Script entity details should include callable field metadata."""
     hass.states.async_set("script.good_morning", "off")

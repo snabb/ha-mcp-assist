@@ -2246,7 +2246,11 @@ class MCPServer(
                         },
                         "domain": {
                             "type": "string",
-                            "description": "Home Assistant domain to filter by (e.g., 'light', 'switch', 'climate', 'sensor')",
+                            "description": (
+                                "Optional strict Home Assistant domain filter (e.g., 'light', "
+                                "'switch', 'climate', 'sensor'). Only set this when the domain "
+                                "is known; do not infer it for a name-based or semantic search."
+                            ),
                         },
                         "state": {
                             "type": "string",
@@ -2254,7 +2258,13 @@ class MCPServer(
                         },
                         "name_contains": {
                             "type": "string",
-                            "description": "Text that an entity name or alias should contain. Also matches related device names, device aliases, area aliases, floor aliases, and labels (case-insensitive). Results are ranked by the strongest match.",
+                            "description": (
+                                "Text that an entity name or alias should contain. Also matches "
+                                "related device names, device aliases, area aliases, floor "
+                                "aliases, and labels (case-insensitive). Results are ranked by "
+                                "the strongest match. Prefer this without a domain filter when "
+                                "the entity domain is not already known."
+                            ),
                         },
                         "device_class": {
                             "oneOf": [
@@ -3853,11 +3863,20 @@ class MCPServer(
                     "entities": [],
                     "pagination": pagination,
                 }
+            no_match_text = "No entities found matching the search criteria."
+            if args.get("name_contains") and (
+                args.get("domain") or args.get("entity_type")
+            ):
+                strict_filter = "domain" if args.get("domain") else "entity_type"
+                no_match_text += (
+                    f" The {strict_filter} filter is strict; if the entity type was inferred, "
+                    "retry the same name search without that filter."
+                )
             return {
                 "content": [
                     {
                         "type": "text",
-                        "text": "No entities found matching the search criteria.",
+                        "text": no_match_text,
                     }
                 ]
             }
