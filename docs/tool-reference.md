@@ -46,6 +46,11 @@ enabled.
 | `get_assist_prompt` | Read Assist prompt context |
 | `get_assist_context_snapshot` | Inspect the current Assist context snapshot |
 
+When called from an Assist conversation, these tools preserve the originating
+voice device and language. This allows Home Assistant to expose device-scoped
+tools such as `HassStartTimer` for timer-capable satellites. Voice timers are
+separate from persistent `timer.*` helper entities.
+
 ## Third-Party LLM API Bridge Tools
 
 The LLM API Bridge exposes allowlisted third-party Home Assistant LLM APIs

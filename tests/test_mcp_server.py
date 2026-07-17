@@ -61,6 +61,7 @@ from custom_components.mcp_assist.const import (
     SERVER_TYPE_OPENAI,
 )
 from custom_components.mcp_assist.mcp_server import MCPServer
+from custom_components.mcp_assist.tool_schema import score_adaptive_tool_match
 
 BUILTIN_SPECS = load_builtin_tool_toggle_specs()
 
@@ -135,6 +136,71 @@ def test_create_assist_llm_context_supports_legacy_user_prompt(
     assert context.assistant == "conversation"
     assert context.device_id is None
     assert context.user_prompt == ""
+
+
+def test_create_assist_llm_context_uses_conversation_metadata(
+    hass, profile_entry_factory
+) -> None:
+    """Native Assist should see the device that originated the conversation."""
+    server = MCPServer(hass, 8099, profile_entry_factory())
+
+    context = server._create_assist_llm_context(
+        {
+            "conversation_device_id": "voice-device",
+            "conversation_language": "fi",
+        }
+    )
+
+    assert context.device_id == "voice-device"
+    assert context.language == "fi"
+
+
+@pytest.mark.asyncio
+async def test_assist_bridge_timer_tools_match_adaptive_timer_query(
+    hass, profile_entry_factory, system_entry_factory
+) -> None:
+    """Adaptive discovery should route timer requests to the Assist bridge."""
+    system_entry_factory(data={CONF_ENABLE_ASSIST_BRIDGE: True})
+    server = MCPServer(hass, 8099, profile_entry_factory())
+
+    tools = await server.handle_tools_list()
+    by_name = {tool["name"]: tool for tool in tools["tools"]}
+
+    for tool_name in ("list_assist_tools", "call_assist_tool"):
+        assert score_adaptive_tool_match(
+            by_name[tool_name], "Set a timer for ten seconds."
+        ) >= 18
+
+
+@pytest.mark.asyncio
+async def test_list_assist_tools_uses_request_context(
+    hass, profile_entry_factory, system_entry_factory, monkeypatch
+) -> None:
+    """Timer-capable native tools depend on request-scoped device context."""
+    system_entry_factory(data={CONF_ENABLE_ASSIST_BRIDGE: True})
+    server = MCPServer(hass, 8099, profile_entry_factory())
+    api_instance = SimpleNamespace(
+        api=SimpleNamespace(id="assist", name="Assist"),
+        api_prompt="",
+        tools=[],
+        custom_serializer=None,
+    )
+    get_api = AsyncMock(return_value=api_instance)
+    monkeypatch.setattr(server, "_get_assist_api_instance", get_api)
+    request_context = {
+        "conversation_device_id": "voice-device",
+        "conversation_language": "en",
+    }
+
+    await server.handle_tool_call(
+        {
+            "name": "list_assist_tools",
+            "arguments": {},
+            "context": request_context,
+        }
+    )
+
+    get_api.assert_awaited_once_with(request_context)
 
 
 def test_create_llm_tool_input_supports_legacy_external_keyword(

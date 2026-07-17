@@ -2317,6 +2317,16 @@ class MCPServer(
                     "required": [],
                     "additionalProperties": False,
                 },
+                "routingHints": {
+                    "keywords": ["timer", "countdown", "voice timer"],
+                    "example_queries": [
+                        "Set a timer for five minutes.",
+                        "How much time is left on my timer?",
+                    ],
+                    "preferred_when": (
+                        "Use to discover device-scoped native Assist tools for temporary voice timers."
+                    ),
+                },
             },
             {
                 "name": "call_assist_tool",
@@ -2338,6 +2348,16 @@ class MCPServer(
                     },
                     "required": ["tool_name"],
                     "additionalProperties": False,
+                },
+                "routingHints": {
+                    "keywords": ["timer", "countdown", "voice timer"],
+                    "example_queries": [
+                        "Set a timer for five minutes.",
+                        "Cancel my timer.",
+                    ],
+                    "preferred_when": (
+                        "Use to invoke device-scoped native Assist timer tools after inspecting their schema."
+                    ),
                 },
             },
             {
@@ -2566,13 +2586,15 @@ class MCPServer(
         elif tool_name == "get_index":
             return await self.tool_get_index()
         elif tool_name == "list_assist_tools":
-            return await self.tool_list_assist_tools(arguments)
+            return await self.tool_list_assist_tools(arguments, context=context)
         elif tool_name == "call_assist_tool":
-            return await self.tool_call_assist_tool(arguments)
+            return await self.tool_call_assist_tool(arguments, context=context)
         elif tool_name == "get_assist_prompt":
-            return await self.tool_get_assist_prompt(arguments)
+            return await self.tool_get_assist_prompt(arguments, context=context)
         elif tool_name == "get_assist_context_snapshot":
-            return await self.tool_get_assist_context_snapshot(arguments)
+            return await self.tool_get_assist_context_snapshot(
+                arguments, context=context
+            )
         elif tool_name == "perform_action":
             return await self.tool_perform_action(arguments)
         elif tool_name == "set_conversation_state":
@@ -4090,11 +4112,13 @@ class MCPServer(
         # Format as JSON for structured consumption
         return {"content": [{"type": "text", "text": json.dumps(index, indent=2)}]}
 
-    async def tool_list_assist_tools(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def tool_list_assist_tools(
+        self, args: Dict[str, Any], *, context: Dict[str, Any] | None = None
+    ) -> Dict[str, Any]:
         """List the native Home Assistant Assist tool surface."""
         del args
 
-        llm_api = await self._get_assist_api_instance()
+        llm_api = await self._get_assist_api_instance(context)
         tools_payload = [
             {
                 "name": tool.name,
@@ -4125,7 +4149,9 @@ class MCPServer(
             ]
         }
 
-    async def tool_call_assist_tool(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def tool_call_assist_tool(
+        self, args: Dict[str, Any], *, context: Dict[str, Any] | None = None
+    ) -> Dict[str, Any]:
         """Call a native Home Assistant Assist tool directly."""
         tool_name = str(args.get("tool_name") or "").strip()
         if not tool_name:
@@ -4135,7 +4161,7 @@ class MCPServer(
         if not isinstance(assist_arguments, dict):
             raise ValueError("arguments must be an object")
 
-        llm_api = await self._get_assist_api_instance()
+        llm_api = await self._get_assist_api_instance(context)
         tool_response = await self._call_llm_api_tool(
             llm_api, tool_name, assist_arguments
         )
@@ -4152,22 +4178,24 @@ class MCPServer(
 
         return {"content": [{"type": "text", "text": "\n".join(text_parts)}]}
 
-    async def tool_get_assist_prompt(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def tool_get_assist_prompt(
+        self, args: Dict[str, Any], *, context: Dict[str, Any] | None = None
+    ) -> Dict[str, Any]:
         """Get the native Home Assistant Assist prompt text."""
         del args
 
-        llm_api = await self._get_assist_api_instance()
+        llm_api = await self._get_assist_api_instance(context)
         description = f"Default prompt for Home Assistant {llm_api.api.name} API"
         text = f"{description}\n\n{llm_api.api_prompt}"
         return {"content": [{"type": "text", "text": text}]}
 
     async def tool_get_assist_context_snapshot(
-        self, args: Dict[str, Any]
+        self, args: Dict[str, Any], *, context: Dict[str, Any] | None = None
     ) -> Dict[str, Any]:
         """Get the native Home Assistant Assist live context snapshot."""
         del args
 
-        llm_api = await self._get_assist_api_instance()
+        llm_api = await self._get_assist_api_instance(context)
         if not self._assist_api_has_live_context_tool(llm_api):
             return {
                 "content": [
@@ -4787,23 +4815,30 @@ class MCPServer(
         absolute = self._format_absolute_time(when)
         return f"{relative} at {absolute}"
 
-    def _create_assist_llm_context(self) -> llm.LLMContext:
+    def _create_assist_llm_context(
+        self, request_context: Dict[str, Any] | None = None
+    ) -> llm.LLMContext:
         """Create an LLM context for the native Home Assistant Assist API."""
+        request_context = request_context or {}
         kwargs: dict[str, Any] = {
             "platform": DOMAIN,
             "context": Context(),
-            "language": "*",
+            "language": request_context.get("conversation_language") or "*",
             "assistant": conversation.DOMAIN,
-            "device_id": None,
+            "device_id": request_context.get("conversation_device_id"),
         }
         if "user_prompt" in inspect.signature(llm.LLMContext).parameters:
             kwargs["user_prompt"] = ""
         return llm.LLMContext(**kwargs)
 
-    async def _get_assist_api_instance(self) -> llm.APIInstance:
+    async def _get_assist_api_instance(
+        self, request_context: Dict[str, Any] | None = None
+    ) -> llm.APIInstance:
         """Get the built-in Home Assistant Assist API instance."""
         return await llm.async_get_api(
-            self.hass, llm.LLM_API_ASSIST, self._create_assist_llm_context()
+            self.hass,
+            llm.LLM_API_ASSIST,
+            self._create_assist_llm_context(request_context),
         )
 
     def _assist_api_has_live_context_tool(self, llm_api: llm.APIInstance) -> bool:
