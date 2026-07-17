@@ -234,6 +234,9 @@ OPTIONAL_TOOL_FAMILY_TOOL_NAMES = {
             "call_assist_tool",
             "get_assist_prompt",
             "get_assist_context_snapshot",
+            "start_voice_timer",
+            "cancel_voice_timer",
+            "get_voice_timer_status",
         }
     ),
     TOOL_FAMILY_LLM_API_BRIDGE: frozenset(
@@ -520,6 +523,7 @@ Memory tools are enabled.
 
 ASSIST_BRIDGE_TECHNICAL_INSTRUCTIONS = """
 Assist bridge tools are enabled.
+- Use start_voice_timer, cancel_voice_timer, and get_voice_timer_status for temporary voice timers. Do not use timer helper entities unless the user explicitly refers to one.
 - Use list_assist_tools / call_assist_tool only as fallback or debugging.
 - Prefer MCP Assist discovery and control tools first.
 """

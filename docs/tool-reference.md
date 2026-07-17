@@ -55,6 +55,12 @@ enabled.
 | `call_assist_tool` | Call an exposed Assist tool |
 | `get_assist_prompt` | Read Assist prompt context |
 | `get_assist_context_snapshot` | Inspect the current Assist context snapshot |
+| `start_voice_timer` | Start a countdown timer on the current Assist voice device |
+| `cancel_voice_timer` | Cancel a countdown timer on the current Assist voice device |
+| `get_voice_timer_status` | Report countdown timers for the current Assist voice device |
+
+Voice timers are temporary and belong to the device handling the conversation.
+They are separate from persistent `timer.*` helper entities.
 
 ## Third-Party LLM API Bridge Tools
 

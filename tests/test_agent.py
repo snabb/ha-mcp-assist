@@ -1666,6 +1666,26 @@ async def test_mcp_tool_call_context_omits_disabled_user_and_home_location(
 
 
 @pytest.mark.asyncio
+async def test_mcp_tool_call_context_includes_conversation_device_and_language(
+    hass, profile_entry_factory
+) -> None:
+    """Device-scoped tools should receive the active conversation metadata."""
+    entry = profile_entry_factory(data={CONF_PROFILE_NAME: "Kitchen Profile"})
+    agent = MCPAssistConversationEntity(hass, entry)
+
+    context = await agent._build_mcp_tool_call_context(
+        SimpleNamespace(
+            device_id="voice-device",
+            language="en",
+            context=SimpleNamespace(user_id=None),
+        )
+    )
+
+    assert context["conversation_device_id"] == "voice-device"
+    assert context["conversation_language"] == "en"
+
+
+@pytest.mark.asyncio
 async def test_custom_prompt_with_index_placeholder_fetches_index(
     hass, profile_entry_factory
 ) -> None:
