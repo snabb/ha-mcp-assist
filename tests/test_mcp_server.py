@@ -137,6 +137,92 @@ def test_create_assist_llm_context_supports_legacy_user_prompt(
     assert context.user_prompt == ""
 
 
+def test_create_assist_llm_context_uses_conversation_metadata(
+    hass, profile_entry_factory
+) -> None:
+    """Native Assist tools should receive the originating voice device."""
+    server = MCPServer(hass, 8099, profile_entry_factory())
+
+    context = server._create_assist_llm_context(
+        {
+            "conversation_device_id": "voice-device",
+            "conversation_language": "fi",
+        }
+    )
+
+    assert context.device_id == "voice-device"
+    assert context.language == "fi"
+
+
+@pytest.mark.asyncio
+async def test_start_voice_timer_calls_native_device_scoped_tool(
+    hass, profile_entry_factory, system_entry_factory, monkeypatch
+) -> None:
+    """The first-class timer tool should delegate to native Assist."""
+    system_entry_factory(data={CONF_ENABLE_ASSIST_BRIDGE: True})
+    server = MCPServer(hass, 8099, profile_entry_factory())
+    async_call_tool = AsyncMock(return_value={"response_type": "action_done"})
+    api_instance = SimpleNamespace(
+        tools=[SimpleNamespace(name="HassStartTimer")],
+        async_call_tool=async_call_tool,
+        api=SimpleNamespace(id="assist"),
+    )
+    get_api = AsyncMock(return_value=api_instance)
+    monkeypatch.setattr(server, "_get_assist_api_instance", get_api)
+
+    result = await server.handle_tool_call(
+        {
+            "name": "start_voice_timer",
+            "arguments": {"minutes": 5},
+            "context": {
+                "conversation_device_id": "voice-device",
+                "conversation_language": "en",
+            },
+        }
+    )
+
+    get_api.assert_awaited_once_with(
+        {
+            "conversation_device_id": "voice-device",
+            "conversation_language": "en",
+        }
+    )
+    tool_input = async_call_tool.await_args.args[0]
+    assert tool_input.tool_name == "HassStartTimer"
+    assert tool_input.tool_args == {"minutes": 5}
+    assert "HassStartTimer" in result["content"][0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_voice_timer_requires_conversation_device(
+    hass, profile_entry_factory
+) -> None:
+    """Voice timers should fail clearly outside a device-scoped conversation."""
+    server = MCPServer(hass, 8099, profile_entry_factory())
+
+    with pytest.raises(ValueError, match="conversation device"):
+        await server.tool_start_voice_timer({"minutes": 5}, context={})
+
+
+@pytest.mark.asyncio
+async def test_voice_timer_rejects_device_without_native_timer_tool(
+    hass, profile_entry_factory, monkeypatch
+) -> None:
+    """A voice device without timer support should not receive a timer call."""
+    server = MCPServer(hass, 8099, profile_entry_factory())
+    monkeypatch.setattr(
+        server,
+        "_get_assist_api_instance",
+        AsyncMock(return_value=SimpleNamespace(tools=[])),
+    )
+
+    with pytest.raises(ValueError, match="does not support voice timers"):
+        await server.tool_start_voice_timer(
+            {"minutes": 5},
+            context={"conversation_device_id": "voice-device"},
+        )
+
+
 def test_create_llm_tool_input_supports_legacy_external_keyword(
     hass, profile_entry_factory, monkeypatch
 ) -> None:
@@ -816,6 +902,7 @@ def test_tool_enablement_follows_shared_settings(
     assert server._is_tool_enabled("discover_entities") is True
     assert server._is_tool_enabled("discover_devices") is False
     assert server._is_tool_enabled("list_assist_tools") is False
+    assert server._is_tool_enabled("start_voice_timer") is False
     assert server._is_tool_enabled("list_llm_apis") is False
     assert server._is_tool_enabled("get_calendar_events") is False
     assert server._is_tool_enabled("call_service_with_response") is False
@@ -898,6 +985,7 @@ async def test_handle_tools_list_filters_disabled_tool_families(
     assert "discover_entities" in tool_names
     assert "discover_devices" not in tool_names
     assert "list_assist_tools" not in tool_names
+    assert "start_voice_timer" not in tool_names
     assert "list_llm_apis" not in tool_names
     assert "get_calendar_events" not in tool_names
     assert "call_service_with_response" not in tool_names

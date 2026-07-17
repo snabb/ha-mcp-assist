@@ -2457,6 +2457,15 @@ class MCPAssistConversationEntity(ConversationEntity):
             "profile_entry_id": self.entry.entry_id,
             "profile_name": self.profile_name,
         }
+        if user_input is not None:
+            device_id = getattr(user_input, "device_id", None)
+            if device_id:
+                context["conversation_device_id"] = device_id
+
+            language = getattr(user_input, "language", None)
+            if language:
+                context["conversation_language"] = language
+
         context.update(await self._get_current_user_context(user_input))
         context.update(self._get_home_location_context())
         return context

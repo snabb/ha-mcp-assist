@@ -2365,6 +2365,57 @@ class MCPServer(
                 },
             },
             {
+                "name": "start_voice_timer",
+                "description": "Start a temporary countdown timer on the current Assist voice device. Use for requests such as 'set a timer for 5 minutes'; do not discover or control timer helper entities first.",
+                "llmDescription": "Start a countdown timer on the current voice device.",
+                "inputSchema": {
+                    "$schema": "http://json-schema.org/draft-07/schema#",
+                    "type": "object",
+                    "properties": {
+                        "hours": {"type": "integer", "minimum": 0},
+                        "minutes": {"type": "integer", "minimum": 0},
+                        "seconds": {"type": "integer", "minimum": 0},
+                        "name": {
+                            "type": "string",
+                            "description": "Optional timer name.",
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "cancel_voice_timer",
+                "description": "Cancel a temporary countdown timer on the current Assist voice device. Optionally identify it by name or original duration.",
+                "llmDescription": "Cancel a countdown timer on the current voice device.",
+                "inputSchema": {
+                    "$schema": "http://json-schema.org/draft-07/schema#",
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "start_hours": {"type": "integer", "minimum": 0},
+                        "start_minutes": {"type": "integer", "minimum": 0},
+                        "start_seconds": {"type": "integer", "minimum": 0},
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "get_voice_timer_status",
+                "description": "Report temporary countdown timers associated with the current Assist voice device. Optionally filter by name or original duration.",
+                "llmDescription": "Get countdown timer status for the current voice device.",
+                "inputSchema": {
+                    "$schema": "http://json-schema.org/draft-07/schema#",
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "start_hours": {"type": "integer", "minimum": 0},
+                        "start_minutes": {"type": "integer", "minimum": 0},
+                        "start_seconds": {"type": "integer", "minimum": 0},
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            {
                 "name": "perform_action",
                 "description": "Control Home Assistant entities by calling services. Use after discovery to turn on/off lights, set temperatures, open/close covers, create calendar events, manage to-do lists, and other write/mutation actions. Prefer entity_id for most direct control; use device_id when intentionally targeting the physical device as a whole.",
                 "llmDescription": "Call Home Assistant services to control entities or run write actions.",
@@ -2573,6 +2624,12 @@ class MCPServer(
             return await self.tool_get_assist_prompt(arguments)
         elif tool_name == "get_assist_context_snapshot":
             return await self.tool_get_assist_context_snapshot(arguments)
+        elif tool_name == "start_voice_timer":
+            return await self.tool_start_voice_timer(arguments, context=context)
+        elif tool_name == "cancel_voice_timer":
+            return await self.tool_cancel_voice_timer(arguments, context=context)
+        elif tool_name == "get_voice_timer_status":
+            return await self.tool_get_voice_timer_status(arguments, context=context)
         elif tool_name == "perform_action":
             return await self.tool_perform_action(arguments)
         elif tool_name == "set_conversation_state":
@@ -4206,6 +4263,63 @@ class MCPServer(
             ]
         }
 
+    async def tool_start_voice_timer(
+        self, args: Dict[str, Any], *, context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Start a timer on the current Assist voice device."""
+        duration_keys = ("hours", "minutes", "seconds")
+        if not any(key in args for key in duration_keys):
+            raise ValueError("One of hours, minutes, or seconds is required")
+        try:
+            has_duration = any(int(args.get(key, 0)) > 0 for key in duration_keys)
+        except (TypeError, ValueError) as err:
+            raise ValueError("Timer duration values must be integers") from err
+        if not has_duration:
+            raise ValueError("Timer duration must be greater than zero")
+        return await self._call_voice_timer_tool("HassStartTimer", args, context)
+
+    async def tool_cancel_voice_timer(
+        self, args: Dict[str, Any], *, context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Cancel a timer on the current Assist voice device."""
+        return await self._call_voice_timer_tool("HassCancelTimer", args, context)
+
+    async def tool_get_voice_timer_status(
+        self, args: Dict[str, Any], *, context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Report timers associated with the current Assist voice device."""
+        return await self._call_voice_timer_tool("HassTimerStatus", args, context)
+
+    async def _call_voice_timer_tool(
+        self,
+        tool_name: str,
+        arguments: Dict[str, Any],
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Call a device-scoped native Assist timer tool."""
+        device_id = str(context.get("conversation_device_id") or "").strip()
+        if not device_id:
+            raise ValueError(
+                "Voice timers require a conversation device that supports timers."
+            )
+
+        llm_api = await self._get_assist_api_instance(context)
+        if not any(tool.name == tool_name for tool in llm_api.tools):
+            raise ValueError(
+                "The current conversation device does not support voice timers."
+            )
+
+        response = await self._call_llm_api_tool(llm_api, tool_name, arguments)
+        serialized = self._serialize_service_response_value(response)
+        text_parts = [f"Called voice timer tool `{tool_name}`."]
+        summary = self._build_assist_tool_response_summary(serialized)
+        if summary:
+            text_parts.extend(("", *summary))
+        text_parts.extend(
+            ("", "Response:", json.dumps(serialized, indent=2, ensure_ascii=False))
+        )
+        return {"content": [{"type": "text", "text": "\n".join(text_parts)}]}
+
     async def tool_perform_action(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Perform an action on Home Assistant entities with progress notifications."""
         domain = args.get("domain")
@@ -4787,23 +4901,30 @@ class MCPServer(
         absolute = self._format_absolute_time(when)
         return f"{relative} at {absolute}"
 
-    def _create_assist_llm_context(self) -> llm.LLMContext:
+    def _create_assist_llm_context(
+        self, request_context: Dict[str, Any] | None = None
+    ) -> llm.LLMContext:
         """Create an LLM context for the native Home Assistant Assist API."""
+        request_context = request_context or {}
         kwargs: dict[str, Any] = {
             "platform": DOMAIN,
             "context": Context(),
-            "language": "*",
+            "language": request_context.get("conversation_language") or "*",
             "assistant": conversation.DOMAIN,
-            "device_id": None,
+            "device_id": request_context.get("conversation_device_id"),
         }
         if "user_prompt" in inspect.signature(llm.LLMContext).parameters:
             kwargs["user_prompt"] = ""
         return llm.LLMContext(**kwargs)
 
-    async def _get_assist_api_instance(self) -> llm.APIInstance:
+    async def _get_assist_api_instance(
+        self, request_context: Dict[str, Any] | None = None
+    ) -> llm.APIInstance:
         """Get the built-in Home Assistant Assist API instance."""
         return await llm.async_get_api(
-            self.hass, llm.LLM_API_ASSIST, self._create_assist_llm_context()
+            self.hass,
+            llm.LLM_API_ASSIST,
+            self._create_assist_llm_context(request_context),
         )
 
     def _assist_api_has_live_context_tool(self, llm_api: llm.APIInstance) -> bool:
