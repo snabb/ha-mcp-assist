@@ -248,9 +248,9 @@ See [External Custom Tools](custom-tools.md).
 
 - Use `discover_entities` before `perform_action` unless the entity ID is known
   and unambiguous.
-- Treat `domain` as a strict filter. For name-based or semantic searches, omit
-  it unless the entity domain is already known; Home Assistant may represent a
-  status or device under a less obvious domain.
+- Treat area, domain, and other discovery criteria as strict filters. Do not add
+  the current area to an explicitly named target unless the user located it
+  there; retry without inferred filters when a name search returns no results.
 - Use `get_entity_details` when exact state or attributes matter.
 - Use device tools when the user refers to physical hardware rather than one
   entity.

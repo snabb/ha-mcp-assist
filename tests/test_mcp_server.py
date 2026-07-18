@@ -1345,10 +1345,10 @@ async def test_handle_tools_list_adds_explicit_effect_annotations(
         "destructiveHint": False,
     }
 
-async def test_discover_entities_schema_discourages_inferred_domain_filters(
+async def test_discover_entities_schema_discourages_inferred_filters(
     hass, profile_entry_factory, system_entry_factory
 ) -> None:
-    """Name searches should not be narrowed to a guessed entity domain."""
+    """Named targets should not inherit guessed domains or the current area."""
     system_entry_factory()
     server = MCPServer(hass, 8099, profile_entry_factory())
 
@@ -1357,10 +1357,13 @@ async def test_discover_entities_schema_discourages_inferred_domain_filters(
         tool for tool in result["tools"] if tool["name"] == "discover_entities"
     )
     properties = discover_tool["inputSchema"]["properties"]
+    area_description = properties["area"]["description"]
 
     assert "strict" in properties["domain"]["description"]
     assert "do not infer" in properties["domain"]["description"]
     assert "without a domain filter" in properties["name_contains"]["description"]
+    assert "Strict" in area_description
+    assert "Do not add the current area to a name search" in area_description
 
 
 @pytest.mark.asyncio
@@ -1957,24 +1960,30 @@ async def test_tool_discover_entities_reports_paging_metadata(
     assert len(result["entities"]) == 2
 
 
-def test_empty_entity_discovery_suggests_broader_name_retry(
+def test_empty_named_discovery_suggests_removing_inferred_filters(
     hass, profile_entry_factory, system_entry_factory
 ) -> None:
-    """Only constrained name searches should recommend a broader retry."""
+    """Empty constrained name searches should explain how to broaden the retry."""
     system_entry_factory()
     server = MCPServer(hass, 8099, profile_entry_factory())
-    constrained_result = server._format_discovery_results(
+
+    result = server._format_discovery_results(
         [],
-        {"domain": "sensor", "name_contains": "delivery"},
+        {
+            "area": "Office",
+            "domain": "switch",
+            "name_contains": "delivery",
+        },
     )
+
+    assert "Additional filters are strict" in result["content"][0]["text"]
+    assert "retry using name_contains without the inferred filters" in (
+        result["content"][0]["text"]
+    )
+
     unconstrained_result = server._format_discovery_results(
         [],
         {"name_contains": "delivery"},
-    )
-
-    assert "domain filter is strict" in constrained_result["content"][0]["text"]
-    assert "retry the same name search without that filter" in (
-        constrained_result["content"][0]["text"]
     )
     assert unconstrained_result["content"][0]["text"] == (
         "No entities found matching the search criteria."
