@@ -2129,7 +2129,13 @@ class MCPServer(
                         },
                         "area": {
                             "type": "string",
-                            "description": "Area/room name or alias to search in - use names from the areas list provided in your system context (e.g., 'Kitchen', 'Back Garden', 'Living Room'). If the value matches a floor name or alias instead, it will search that floor.",
+                            "description": (
+                                "Strict area/room name or alias filter. Use names from the areas "
+                                "list provided in system context (e.g., 'Kitchen', 'Back Garden', "
+                                "'Living Room'). Do not add the current area to a name search "
+                                "unless the user located the named entity there. If the value "
+                                "matches a floor name or alias instead, it searches that floor."
+                            ),
                         },
                         "floor": {
                             "type": "string",
@@ -3674,11 +3680,31 @@ class MCPServer(
                     "entities": [],
                     "pagination": pagination,
                 }
+            no_match_text = "No entities found matching the search criteria."
+            if args.get("name_contains") and any(
+                args.get(name)
+                for name in (
+                    "area",
+                    "floor",
+                    "label",
+                    "domain",
+                    "entity_type",
+                    "state",
+                    "device_class",
+                    "name_pattern",
+                    "inferred_type",
+                )
+            ):
+                no_match_text += (
+                    " Additional filters are strict. If the area, domain, or another "
+                    "filter was inferred rather than specified by the user, retry using "
+                    "name_contains without the inferred filters."
+                )
             return {
                 "content": [
                     {
                         "type": "text",
-                        "text": "No entities found matching the search criteria.",
+                        "text": no_match_text,
                     }
                 ]
             }

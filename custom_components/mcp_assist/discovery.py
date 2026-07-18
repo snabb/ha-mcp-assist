@@ -251,7 +251,15 @@ class SmartDiscovery:
             return await self._discover_aggregate_entities_page(
                 domain, state, limit, offset
             )
-        elif area and not floor and not label and not device_class and not name_pattern and not inferred_type:
+        elif (
+            area
+            and not name_contains
+            and not floor
+            and not label
+            and not device_class
+            and not name_pattern
+            and not inferred_type
+        ):
             return await self._discover_area_entities_page(
                 area, entity_type, domain, state, limit, offset
             )

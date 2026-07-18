@@ -209,6 +209,64 @@ async def test_area_discovery_honors_entity_type_for_area_and_floor(hass) -> Non
 
 
 @pytest.mark.asyncio
+async def test_area_discovery_honors_name_filter(hass) -> None:
+    """Named area searches should not return unrelated entities in that area."""
+    area_registry = ar.async_get(hass)
+    office = area_registry.async_create("Office")
+    entryway = area_registry.async_create("Entryway")
+    entity_registry = er.async_get(hass)
+
+    outlet_entry = entity_registry.async_get_or_create(
+        "switch",
+        "test",
+        "office_outlet",
+        suggested_object_id="office_outlet",
+    )
+    delivery_entry = entity_registry.async_get_or_create(
+        "input_boolean",
+        "test",
+        "delivery_pending",
+        suggested_object_id="delivery_pending",
+    )
+    entity_registry.async_update_entity(outlet_entry.entity_id, area_id=office.id)
+    entity_registry.async_update_entity(delivery_entry.entity_id, area_id=entryway.id)
+    hass.states.async_set(
+        outlet_entry.entity_id,
+        "on",
+        {"friendly_name": "Office Outlet"},
+    )
+    hass.states.async_set(
+        delivery_entry.entity_id,
+        "on",
+        {"friendly_name": "Delivery Pending"},
+    )
+
+    discovery = SmartDiscovery(hass)
+    with patch(
+        "custom_components.mcp_assist.discovery.async_should_expose",
+        return_value=True,
+    ):
+        page = await discovery.discover_entities_page(
+            domain="switch",
+            area="Office",
+            name_contains="delivery",
+            limit=10,
+        )
+        matching_page = await discovery.discover_entities_page(
+            domain="input_boolean",
+            area="Entryway",
+            name_contains="delivery",
+            limit=10,
+        )
+
+    assert page["items"] == []
+    assert page["total_found"] == 0
+    assert [item["entity_id"] for item in matching_page["items"]] == [
+        delivery_entry.entity_id
+    ]
+
+
+@pytest.mark.asyncio
 async def test_get_entity_details_includes_script_fields(hass) -> None:
     """Script entity details should include callable field metadata."""
     hass.states.async_set("script.good_morning", "off")

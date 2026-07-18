@@ -911,6 +911,26 @@ async def test_handle_tools_list_filters_disabled_tool_families(
 
 
 @pytest.mark.asyncio
+async def test_discover_entities_schema_warns_against_inferred_current_area(
+    hass, profile_entry_factory, system_entry_factory
+) -> None:
+    """Named targets should not inherit the conversation's current area."""
+    system_entry_factory()
+    server = MCPServer(hass, 8099, profile_entry_factory())
+
+    result = await server.handle_tools_list()
+    discover_tool = next(
+        tool for tool in result["tools"] if tool["name"] == "discover_entities"
+    )
+    area_description = discover_tool["inputSchema"]["properties"]["area"][
+        "description"
+    ]
+
+    assert "Strict" in area_description
+    assert "Do not add the current area to a name search" in area_description
+
+
+@pytest.mark.asyncio
 async def test_handle_tools_list_includes_music_assistant_package_tools(
     hass, profile_entry_factory, system_entry_factory
 ) -> None:
@@ -1502,6 +1522,28 @@ async def test_tool_discover_entities_reports_paging_metadata(
     )
     assert result["pagination"]["next_offset"] == 2
     assert len(result["entities"]) == 2
+
+
+def test_empty_named_discovery_suggests_removing_inferred_filters(
+    hass, profile_entry_factory, system_entry_factory
+) -> None:
+    """Empty constrained name searches should explain how to broaden the retry."""
+    system_entry_factory()
+    server = MCPServer(hass, 8099, profile_entry_factory())
+
+    result = server._format_discovery_results(
+        [],
+        {
+            "area": "Office",
+            "domain": "switch",
+            "name_contains": "delivery",
+        },
+    )
+
+    assert "Additional filters are strict" in result["content"][0]["text"]
+    assert "retry using name_contains without the inferred filters" in (
+        result["content"][0]["text"]
+    )
 
 
 @pytest.mark.asyncio
