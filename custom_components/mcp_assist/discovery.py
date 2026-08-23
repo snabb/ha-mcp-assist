@@ -36,6 +36,11 @@ from .const import MAX_ENTITIES_PER_DISCOVERY
 _LOGGER = logging.getLogger(__name__)
 
 
+def _safe_log_value(value: Any) -> str:
+    """Return a single-line representation of a user-controlled log value."""
+    return str(value).replace("\r", "\\r").replace("\n", "\\n")
+
+
 class QueryType(Enum):
     """Types of discovery queries."""
     PERSON = "person"
@@ -191,7 +196,11 @@ class SmartDiscovery:
         )
 
         # Log the detected query type
-        _LOGGER.debug(f"Detected query type: {query_type}, name_contains: {name_contains}")
+        _LOGGER.debug(
+            "Detected query type: %s, name_contains: %s",
+            query_type,
+            _safe_log_value(name_contains),
+        )
 
         # Route to appropriate discovery method
         if (
@@ -1375,10 +1384,16 @@ class SmartDiscovery:
                 if inferred_type in inferred_types:
                     pattern_data = inferred_types[inferred_type]
                     name_pattern = pattern_data.get("pattern")
-                    _LOGGER.debug("Inferred type '%s' mapped to pattern '%s'",
-                                 inferred_type, name_pattern)
+                    _LOGGER.debug(
+                        "Inferred type '%s' mapped to pattern '%s'",
+                        _safe_log_value(inferred_type),
+                        _safe_log_value(name_pattern),
+                    )
                 else:
-                    _LOGGER.warning("Inferred type '%s' not found in index", inferred_type)
+                    _LOGGER.warning(
+                        "Inferred type '%s' not found in index",
+                        _safe_log_value(inferred_type),
+                    )
             else:
                 _LOGGER.warning("Index manager not available for inferred_type lookup")
 
@@ -1565,9 +1580,17 @@ class SmartDiscovery:
         paged_entities = all_entities[offset : offset + limit]
 
         _LOGGER.debug(
-            f"General discovery found {len(all_entities)} entities with filters: "
-            f"type={entity_type}, area={area}, floor={floor}, label={label}, "
-            f"domain={domain}, state={state}, name_contains={name_contains}"
+            "General discovery found %d entities with filters: "
+            "type=%s, area=%s, floor=%s, label=%s, domain=%s, state=%s, "
+            "name_contains=%s",
+            len(all_entities),
+            _safe_log_value(entity_type),
+            _safe_log_value(area),
+            _safe_log_value(floor),
+            _safe_log_value(label),
+            _safe_log_value(domain),
+            _safe_log_value(state),
+            _safe_log_value(name_contains),
         )
 
         return {
@@ -2021,13 +2044,13 @@ class SmartDiscovery:
             "Device discovery found %d devices with filters: area=%s, floor=%s, "
             "label=%s, domain=%s, name_contains=%s, manufacturer=%s, model=%s",
             len(devices),
-            area,
-            floor,
-            label,
-            domain,
-            name_contains,
-            manufacturer,
-            model,
+            _safe_log_value(area),
+            _safe_log_value(floor),
+            _safe_log_value(label),
+            _safe_log_value(domain),
+            _safe_log_value(name_contains),
+            _safe_log_value(manufacturer),
+            _safe_log_value(model),
         )
 
         return {
@@ -2213,7 +2236,11 @@ class SmartDiscovery:
                         "domain": state.entity_id.split(".")[0]
                     })
 
-        _LOGGER.debug(f"Found {len(entities)} entities in area '{area_id}'")
+        _LOGGER.debug(
+            "Found %d entities in area '%s'",
+            len(entities),
+            _safe_log_value(area_id),
+        )
         return entities
 
 

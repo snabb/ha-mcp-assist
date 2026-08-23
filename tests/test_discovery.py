@@ -3,15 +3,117 @@
 from __future__ import annotations
 
 from datetime import date
+import logging
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import floor_registry as fr
 
+from custom_components.mcp_assist import discovery as discovery_module
+from custom_components.mcp_assist.const import DOMAIN
 from custom_components.mcp_assist.discovery import SmartDiscovery
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("ordinary", "ordinary"),
+        ("first\r\nsecond", "first\\r\\nsecond"),
+        ("first\nsecond", "first\\nsecond"),
+    ],
+)
+def test_safe_log_value_escapes_line_breaks(value: str, expected: str) -> None:
+    """Discovery log values should stay on one physical log line."""
+    assert discovery_module._safe_log_value(value) == expected
+
+
+@pytest.mark.asyncio
+async def test_entity_discovery_logs_escape_user_filters(hass, caplog, monkeypatch) -> None:
+    """Entity filter and inferred-type logs should escape forged line breaks."""
+    discovery = SmartDiscovery(hass)
+    malicious_value = "ordinary\r\nFORGED: admin"
+    index_manager = SimpleNamespace(
+        get_index=AsyncMock(
+            return_value={
+                "inferred_types": {
+                    malicious_value: {"pattern": "sensor.\nFORGED: pattern"},
+                }
+            }
+        )
+    )
+    monkeypatch.setitem(hass.data, DOMAIN, {"index_manager": index_manager})
+
+    with caplog.at_level(logging.DEBUG, logger=discovery_module._LOGGER.name):
+        await discovery.discover_entities_page(
+            name_contains=malicious_value,
+            limit=5,
+        )
+        await discovery.discover_entities_page(
+            inferred_type=malicious_value,
+            limit=5,
+        )
+        index_manager.get_index.return_value = {"inferred_types": {}}
+        await discovery.discover_entities_page(
+            inferred_type="missing\r\nFORGED: missing",
+            limit=5,
+        )
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == discovery_module._LOGGER.name
+    ]
+    assert all("\r" not in message and "\n" not in message for message in messages)
+    assert any("ordinary\\r\\nFORGED: admin" in message for message in messages)
+    assert any("sensor.\\nFORGED: pattern" in message for message in messages)
+    assert any("missing\\r\\nFORGED: missing" in message for message in messages)
+
+
+@pytest.mark.asyncio
+async def test_device_discovery_logs_escape_all_user_filters(hass, caplog) -> None:
+    """Every device discovery filter should be single-line in debug logs."""
+    discovery = SmartDiscovery(hass)
+    filters = {
+        "area": "area\r\nFORGED-area",
+        "floor": "floor\r\nFORGED-floor",
+        "label": "label\r\nFORGED-label",
+        "domain": "domain\r\nFORGED-domain",
+        "name_contains": "name\r\nFORGED-name",
+        "manufacturer": "manufacturer\r\nFORGED-manufacturer",
+        "model": "model\r\nFORGED-model",
+    }
+
+    with (
+        patch.object(
+            discovery,
+            "_resolve_area_entry",
+            return_value=SimpleNamespace(id="area-id"),
+        ),
+        patch.object(
+            discovery,
+            "_resolve_floor_entry",
+            return_value=SimpleNamespace(floor_id="floor-id"),
+        ),
+        patch.object(
+            discovery,
+            "_resolve_label_entry",
+            return_value=SimpleNamespace(label_id="label-id"),
+        ),
+        caplog.at_level(logging.DEBUG, logger=discovery_module._LOGGER.name),
+    ):
+        await discovery.discover_devices_page(**filters)
+
+    message = next(
+        record.getMessage()
+        for record in caplog.records
+        if record.getMessage().startswith("Device discovery found")
+    )
+    assert "\r" not in message and "\n" not in message
+    for value in filters.values():
+        assert discovery_module._safe_log_value(value) in message
 
 
 def test_entity_match_details_include_alias_and_floor_context(hass) -> None:
