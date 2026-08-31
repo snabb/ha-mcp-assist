@@ -831,6 +831,60 @@ async def test_detail_tools_skip_non_json_serializable_values(
 
 
 @pytest.mark.asyncio
+async def test_entity_details_use_home_assistant_local_time(
+    hass,
+    profile_entry_factory,
+    system_entry_factory,
+) -> None:
+    """Entity timestamps should be explicit and localized for the model."""
+    system_entry_factory()
+    server = MCPServer(hass, 8099, profile_entry_factory())
+    original_time_zone = hass.config.time_zone
+    first_update = datetime(2026, 8, 31, 6, 15, tzinfo=timezone.utc)
+    second_update = datetime(2026, 8, 31, 6, 45, tzinfo=timezone.utc)
+
+    try:
+        await hass.config.async_set_time_zone("Asia/Shanghai")
+        hass.states.async_set(
+            "sensor.office_temperature",
+            "23",
+            {"recorded_at": first_update},
+            timestamp=first_update.timestamp(),
+        )
+        hass.states.async_set(
+            "sensor.office_temperature",
+            "23",
+            {"recorded_at": second_update},
+            timestamp=second_update.timestamp(),
+        )
+
+        with patch(
+            "custom_components.mcp_assist.discovery.async_should_expose",
+            return_value=True,
+        ):
+            result = await server.tool_get_entity_details(
+                {"entity_ids": ["sensor.office_temperature"]}
+            )
+    finally:
+        await hass.config.async_set_time_zone(original_time_zone)
+
+    payload = json.loads(result["content"][0]["text"])
+    details = payload["sensor.office_temperature"]
+
+    assert payload["_metadata"] == {
+        "home_assistant_time_zone": "Asia/Shanghai",
+        "timestamp_format": "ISO 8601 (Asia/Shanghai)",
+        "note": (
+            "last_changed, last_updated, and datetime-valued attributes "
+            "are in Home Assistant local time."
+        ),
+    }
+    assert details["last_changed"] == "2026-08-31T14:15:00+08:00"
+    assert details["last_updated"] == "2026-08-31T14:45:00+08:00"
+    assert details["attributes"]["recorded_at"] == "2026-08-31T14:45:00+08:00"
+
+
+@pytest.mark.asyncio
 async def test_server_start_serves_health_endpoint(
     hass, profile_entry_factory, system_entry_factory
 ) -> None:

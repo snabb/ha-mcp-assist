@@ -21,6 +21,10 @@ control.
 | `list_domains` | List entity domains available to the assistant |
 | `set_conversation_state` | Track whether the assistant expects a follow-up |
 
+`get_entity_details` returns `last_changed`, `last_updated`, and any
+datetime-valued attributes as ISO 8601 timestamps in Home Assistant's configured
+time zone. Its `_metadata` entry names that time zone explicitly.
+
 `perform_action` requests structured response data automatically when Home
 Assistant marks a service as response-capable, and includes that data in the
 tool result. For lights, legacy `color_temp` values are migrated to
@@ -109,6 +113,8 @@ time range. Use `period: "today"` or `period: "yesterday"` for calendar-day
 questions instead of approximating with a number of hours.
 Count analyses count transitions into the matching state, not repeated recorder
 rows that report the same state.
+Recorder query boundaries stay in UTC, while timestamps shown in tool results
+are formatted in Home Assistant's configured time zone.
 
 ## Calculator and Unit Conversion
 
