@@ -15,6 +15,7 @@ from enum import Enum
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import area_registry as ar, entity_registry as er, device_registry as dr
 from homeassistant.components.homeassistant import async_should_expose
+from homeassistant.util import dt as dt_util
 
 try:
     from homeassistant.helpers import floor_registry as fr
@@ -1746,7 +1747,9 @@ class SmartDiscovery:
     @staticmethod
     def _serialize_attribute_value(value: Any) -> Any:
         """Recursively serialize attribute values into JSON-safe structures."""
-        if isinstance(value, (datetime, date, time)):
+        if isinstance(value, datetime):
+            return dt_util.as_local(value).isoformat()
+        if isinstance(value, (date, time)):
             return value.isoformat()
         if isinstance(value, dict):
             return {
@@ -1823,8 +1826,8 @@ class SmartDiscovery:
                 "device_name": entity_context["device_name"],
                 "device_name_by_user": entity_context["device_name_by_user"],
                 "device_aliases": entity_context["device_aliases"],
-                "last_changed": state_obj.last_changed.isoformat(),
-                "last_updated": state_obj.last_updated.isoformat(),
+                "last_changed": self._serialize_attribute_value(state_obj.last_changed),
+                "last_updated": self._serialize_attribute_value(state_obj.last_updated),
             }
 
             if state_obj.domain == "weather":

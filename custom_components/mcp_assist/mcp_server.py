@@ -2339,8 +2339,8 @@ class MCPServer(
             },
             {
                 "name": "get_entity_details",
-                "description": "Get current state plus full serialized entity attributes, aliases, area, floor, labels, and device context for specific entities",
-                "llmDescription": "Get full details for specific entities.",
+                "description": "Get current state plus full serialized entity attributes, aliases, area, floor, labels, and device context for specific entities. Timestamps are returned in the Home Assistant-configured local time zone.",
+                "llmDescription": "Get full details for specific entities with local timestamps.",
                 "inputSchema": {
                     "$schema": "http://json-schema.org/draft-07/schema#",
                     "type": "object",
@@ -4078,8 +4078,20 @@ class MCPServer(
         entity_ids = args.get("entity_ids", [])
         details = await self.discovery.get_entity_details(entity_ids)
         safe_details = _strip_non_json_serializable(details)
+        time_zone = str(self.hass.config.time_zone)
+        payload = {
+            "_metadata": {
+                "home_assistant_time_zone": time_zone,
+                "timestamp_format": f"ISO 8601 ({time_zone})",
+                "note": (
+                    "last_changed, last_updated, and datetime-valued attributes "
+                    "are in Home Assistant local time."
+                ),
+            },
+            **safe_details,
+        }
 
-        return {"content": [{"type": "text", "text": json.dumps(safe_details, indent=2)}]}
+        return {"content": [{"type": "text", "text": json.dumps(payload, indent=2)}]}
 
     async def tool_get_device_details(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Get detailed information about specific devices."""
