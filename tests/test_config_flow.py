@@ -8,9 +8,9 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+from probatio import to_field_list
 import pytest
 import voluptuous as vol
-import voluptuous_serialize
 from homeassistant.data_entry_flow import FlowResultType, section
 from homeassistant.helpers.selector import SelectSelector, TemplateSelector
 
@@ -1210,8 +1210,8 @@ def test_built_in_tool_checkboxes_rely_on_translation_subtitles() -> None:
         if getattr(marker, "schema", marker) in profile_names
     }
 
-    shared_serialized = voluptuous_serialize.convert(vol.Schema(shared_checkbox_fields))
-    profile_serialized = voluptuous_serialize.convert(vol.Schema(profile_checkbox_fields))
+    shared_serialized = to_field_list(vol.Schema(shared_checkbox_fields))
+    profile_serialized = to_field_list(vol.Schema(profile_checkbox_fields))
 
     shared_by_name = {item["name"]: item for item in shared_serialized}
     profile_by_name = {item["name"]: item for item in profile_serialized}

@@ -10,7 +10,6 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-from voluptuous_openapi import convert
 
 from homeassistant.components import conversation
 from homeassistant.core import Context
@@ -25,6 +24,7 @@ from ....const import (
     DOMAIN,
     parse_llm_api_allowlist,
 )
+from ....openapi import to_openapi
 from ...tool_runtime import HomeAssistantToolRuntime
 
 _LOGGER = logging.getLogger(__name__)
@@ -395,7 +395,7 @@ class LLMApiBridgeTool(HomeAssistantToolRuntime):
     ) -> dict[str, Any]:
         """Convert a Home Assistant LLM tool schema to JSON schema for inspection."""
         try:
-            input_schema = convert(
+            input_schema = to_openapi(
                 tool.parameters, custom_serializer=custom_serializer
             )
         except Exception as err:
