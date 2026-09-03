@@ -23,7 +23,6 @@ import aiohttp
 from aiohttp import web, WSCloseCode, WSMsgType
 from aiohttp.web_ws import WebSocketResponse
 import voluptuous as vol
-from voluptuous_openapi import convert
 import yarl
 
 from homeassistant.components import conversation
@@ -54,6 +53,7 @@ from .tools.builtin_catalog import (
     get_builtin_toggle_spec_by_package_id,
     is_builtin_package_enabled_for_shared_settings,
 )
+from .openapi import to_openapi
 from .const import (
     DOMAIN,
     MCP_SERVER_NAME,
@@ -4963,7 +4963,7 @@ class MCPServer(
     ) -> Dict[str, Any]:
         """Convert a Home Assistant LLM tool schema to JSON schema for inspection."""
         try:
-            input_schema = convert(
+            input_schema = to_openapi(
                 tool.parameters, custom_serializer=custom_serializer
             )
         except Exception as err:

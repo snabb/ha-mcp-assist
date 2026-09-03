@@ -18,7 +18,7 @@ updates:
         applies-to: "version-updates"
         patterns:
           - "pytest-homeassistant-custom-component"
-          - "voluptuous-openapi"
+          - "gazetteer-matcher"
           - "hassil"
           - "home-assistant-intents"
         update-types:
@@ -30,7 +30,7 @@ updates:
           - "*"
         exclude-patterns:
           - "pytest-homeassistant-custom-component"
-          - "voluptuous-openapi"
+          - "gazetteer-matcher"
           - "hassil"
           - "home-assistant-intents"
         update-types:
@@ -41,7 +41,7 @@ updates:
           - "*"
         exclude-patterns:
           - "pytest-homeassistant-custom-component"
-          - "voluptuous-openapi"
+          - "gazetteer-matcher"
           - "hassil"
           - "home-assistant-intents"
         update-types:
